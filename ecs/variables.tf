@@ -41,3 +41,17 @@ variable "aws_alb_target_group_arn" {
 variable "service_desired_count" {
   description = "Number of services running in parallel"
 }
+
+variable "container_environment" {
+  description = "The container environmnent variables"
+  type        = list
+}
+
+variable "container_secrets" {
+  description = "The container secret environmnent variables"
+  type        = list
+}
+
+variable "secret_arn" {
+  description = "ARN for secret"
+}

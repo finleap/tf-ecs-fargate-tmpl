@@ -47,7 +47,6 @@ resource "aws_iam_policy" "dynamodb" {
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "VisualEditor0",
             "Effect": "Allow",
             "Action": [
                 "dynamodb:CreateTable",
@@ -69,14 +68,41 @@ resource "aws_iam_policy" "dynamodb" {
 EOF
 }
 
+resource "aws_iam_policy" "secrets" {
+  name        = "${var.name}-task-policy-secrets"
+  description = "Policy that allows access to the secrets we created"
+
+  policy = <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AccessSecrets",
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": "${var.secret_arn}"
+        }
+    ]
+}
+EOF
+}
+
+
 resource "aws_iam_role_policy_attachment" "ecs-task-execution-role-policy-attachment" {
-    role = aws_iam_role.ecs_task_execution_role.name
-    policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 resource "aws_iam_role_policy_attachment" "ecs-task-role-policy-attachment" {
-    role       = aws_iam_role.ecs_task_role.name
-    policy_arn = aws_iam_policy.dynamodb.arn
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = aws_iam_policy.dynamodb.arn
+}
+
+resource "aws_iam_role_policy_attachment" "ecs-task-role-policy-attachment-for-secrets" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = aws_iam_policy.secrets.arn
 }
 
 resource "aws_cloudwatch_log_group" "main" {
@@ -96,24 +122,26 @@ resource "aws_ecs_task_definition" "main" {
   memory                   = var.container_memory
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
-  container_definitions    = jsonencode([{
-      name             = "${var.name}-container-${var.environment}"
-      image            = "${var.container_image}:latest"
-      essential        = true
-      portMappings = [{
-        protocol      = "tcp"
-        containerPort = var.container_port
-        hostPort      = var.container_port
-      }]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.main.name
-          awslogs-stream-prefix = "ecs"
-          awslogs-region        = var.region
-        }
+  container_definitions = jsonencode([{
+    name        = "${var.name}-container-${var.environment}"
+    image       = "${var.container_image}:latest"
+    essential   = true
+    environment = var.container_environment
+    portMappings = [{
+      protocol      = "tcp"
+      containerPort = var.container_port
+      hostPort      = var.container_port
+    }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.main.name
+        awslogs-stream-prefix = "ecs"
+        awslogs-region        = var.region
       }
-    }])
+    }
+    secrets = var.container_secrets
+  }])
 
   tags = {
     Name        = "${var.name}-task-${var.environment}"

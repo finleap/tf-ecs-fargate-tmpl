@@ -1,12 +1,32 @@
-terraform {
-  required_providers {
-    aws = "~> 2.44"
-  }
-  required_version = "~>0.12.0"
+provider "aws" {
+  access_key = var.aws-access-key
+  secret_key = var.aws-secret-key
+  region     = var.aws-region
+  version    = "~> 2.0"
 }
 
-provider "aws" {
-  region = var.region
+terraform {
+  backend "s3" {
+    bucket  = "terraform-backend-store"
+    encrypt = true
+    key     = "terraform.tfstate"
+    region  = "eu-central-1"
+    # dynamodb_table = "terraform-state-lock-dynamo" - uncomment this line once the terraform-state-lock-dynamo has been terraformed
+  }
+}
+
+resource "aws_dynamodb_table" "dynamodb-terraform-state-lock" {
+  name           = "terraform-state-lock-dynamo"
+  hash_key       = "LockID"
+  read_capacity  = 20
+  write_capacity = 20
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
+  tags = {
+    Name = "DynamoDB Terraform State Lock Table"
+  }
 }
 
 module "vpc" {
@@ -57,4 +77,15 @@ module "ecs" {
   container_memory            = var.container_memory
   container_image             = module.ecr.aws_ecr_repository_url
   service_desired_count       = var.service_desired_count
+  container_environment = [
+    { name = "LOG_LEVEL",
+    value = "DEBUG" },
+    { name = "PORT",
+    value = var.container_port }
+  ]
+  container_secrets = [
+    { name = "API_KEYS",
+    valueFrom = aws_secretsmanager_secret_version.api_keys_value.arn }
+  ]
+  secret_arn = aws_secretsmanager_secret_version.api_keys_value.arn
 }
